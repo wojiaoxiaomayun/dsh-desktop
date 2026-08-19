@@ -26,22 +26,35 @@ Closing the window also quits the app (and stops the backend).
 ## Quick start
 
 ```bash
-# 1. install JS deps (Tauri CLI)
+# 1. install JS deps (frontend + Tauri CLI)
 pnpm install
 
 # 2. (re)generate icons from app-icon.png
 pnpm icon
 
-# 3. run in dev mode
+# 3. run in dev mode (Vite dev server :1420 + Tauri window)
 pnpm dev
 
-# 4. build installers
+# 4. build installers (frontend build + release + bundle)
 pnpm build
 ```
 
+## Frontend (React + Vite + shadcn/ui)
+
+- **Source** lives in `src/` (committed to git); `dist/` is the Vite build output (gitignored).
+- **Stack**: React 19 + Vite 8 + TypeScript + Tailwind CSS v4 + [shadcn/ui](https://ui.shadcn.com) (Base UI, `nova` preset).
+- **Splash page**: `src/App.tsx` — listens for `backend-log` / `backend-state` events via `@tauri-apps/api`, then invokes the `backend_start` command. In a plain browser (no Tauri) it falls back to a mock boot so the UI can be iterated standalone: `pnpm dev:web`.
+- **Adding components** (e.g. for future settings pages):
+
+  ```bash
+  pnpm dlx shadcn@latest add <component>   # e.g. input, switch, dialog, sheet
+  ```
+
+- Other scripts: `pnpm build:web` (frontend only), `pnpm typecheck` (tsc --noEmit), `pnpm preview`.
+
 ## How it works
 
-- **Splash page**: `dist/index.html` — listens for `backend-log` / `backend-state` events via `window.__TAURI__`, then invokes the `backend_start` command.
+- **Splash page**: React app in `src/` (built by Vite into `dist/`) — listens for `backend-log` / `backend-state` events via `@tauri-apps/api`, then invokes the `backend_start` command.
 - **Backend lifecycle**: `src-tauri/src/lib.rs`
   - `scan_profiles()` — lists directories under `$DSH_HOME/profiles` (skips `node_modules` and dot-dirs).
   - `pick_free_port()` — binds `127.0.0.1:0` to get an OS-assigned free port.
@@ -49,6 +62,6 @@ pnpm build
   - A generation counter prevents stale navigations during fast switches.
   - On exit (`RunEvent::Exit` or window close), `kill_tree()` runs `taskkill /PID … /T /F` to terminate the whole process tree (cmd → volta → node).
 - **Tray**: created in `setup_tray` (`TrayIconBuilder` + a `Menu` with a dynamic `Submenu` of `CheckMenuItem`s).
-- **Config**: `src-tauri/tauri.conf.json` — `withGlobalTauri` injects `window.__TAURI__`; the window starts on the local splash (`index.html`).
+- **Config**: `src-tauri/tauri.conf.json` — dev 时 `beforeDevCommand` 启动 Vite（:1420），build 时 `beforeBuildCommand` 先产前端，`frontendDist` 指向 `../dist`；窗口在 dev 指向 `devUrl`、生产指向打包后的 `dist`。
 
 To change the bind host, edit `BACKEND_HOST` in `src-tauri/src/lib.rs`. The port is always chosen dynamically; profiles come from `$DSH_HOME/profiles`.

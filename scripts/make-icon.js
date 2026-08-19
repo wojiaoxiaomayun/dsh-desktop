@@ -95,5 +95,9 @@ const png = Buffer.concat([
 ]);
 
 const out = path.join(__dirname, '..', 'app-icon.png');
-fs.writeFileSync(out, png);
-console.log('Wrote', out, '(', png.length, 'bytes )');
+if (fs.existsSync(out)) {
+  console.log('app-icon.png 已存在，跳过生成（保留自定义图标）');
+} else {
+  fs.writeFileSync(out, png);
+  console.log('Wrote', out, '(', png.length, 'bytes )');
+}
