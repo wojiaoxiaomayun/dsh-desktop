@@ -6,7 +6,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use tauri::menu::CheckMenuItem;
-use tauri::{Emitter, Manager};
+use tauri::webview::{NewWindowFeatures, NewWindowResponse, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, Url, WebviewUrl};
 
 const BACKEND_HOST: &str = "127.0.0.1";
 
@@ -102,7 +103,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(BackendState::default())
         .invoke_handler(tauri::generate_handler![backend_start])
-        .setup(setup_tray)
+        .setup(setup)
         .on_menu_event(handle_menu_event)
         .on_window_event(|window, event| {
             // 关闭主窗口仅隐藏到托盘，不退出进程；退出由托盘菜单“退出”完成。
@@ -121,6 +122,66 @@ pub fn run() {
                 }
             }
         });
+}
+
+/// 应用初始化：先创建主窗口（挂载外部链接拦截），再创建托盘。
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    create_main_window(app)?;
+    setup_tray(app)
+}
+
+/// 创建主窗口。窗口不在 tauri.conf.json 里声明，而是放到这里，以便挂载
+/// `on_navigation` / `on_new_window` 处理器，把外部链接交给默认浏览器打开。
+fn create_main_window(app: &mut tauri::App) -> tauri::Result<()> {
+    let nav_handle = app.handle().clone();
+    let popup_handle = app.handle().clone();
+
+    WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("DSH Desktop")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(900.0, 600.0)
+        .resizable(true)
+        .center()
+        .on_navigation(move |url| {
+            // 启动页与本地后端允许正常导航；其余一律交给默认浏览器并取消导航。
+            if is_internal_url(url) {
+                true
+            } else {
+                open_external(&nav_handle, url);
+                false
+            }
+        })
+        .on_new_window(move |url, _features: NewWindowFeatures| {
+            // window.open / target="_blank"：在默认浏览器打开，不在应用内新建窗口。
+            open_external(&popup_handle, &url);
+            NewWindowResponse::Deny
+        })
+        .build()?;
+
+    Ok(())
+}
+
+/// 判定一个 URL 是否属于应用内部：Tauri 启动页协议 + 本地后端（127.0.0.1 / localhost）。
+fn is_internal_url(url: &Url) -> bool {
+    if url.scheme() == "tauri" {
+        return true;
+    }
+    matches!(
+        url.host_str(),
+        Some("127.0.0.1") | Some("localhost") | Some("tauri.localhost")
+    )
+}
+
+/// 用系统默认浏览器打开一个外部 URL（仅 http/https/mailto/tel）。
+fn open_external(app: &tauri::AppHandle, url: &Url) {
+    match url.scheme() {
+        "http" | "https" | "mailto" | "tel" => {
+            if let Err(e) = open::that_detached(url.as_str()) {
+                let _ = app.emit("backend-log", format!("[错误] 无法在浏览器中打开 {url}: {e}"));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// 创建系统托盘图标和右键菜单（切换 Profile + 退出）。
