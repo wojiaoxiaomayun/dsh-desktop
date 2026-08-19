@@ -16,11 +16,35 @@ permissions:
 
 jobs:
   build-release:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            args: ""
+          - platform: linux
+            os: ubuntu-22.04
+            args: ""
+          - platform: macos
+            os: macos-latest
+            args: --target universal-apple-darwin
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -36,6 +60,10 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Add macOS universal targets
+        if: matrix.platform == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
@@ -44,8 +72,11 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # tauri-action 会执行 `tauri build`：frontendDist 由 tauri.conf.json 的
-      # beforeBuildCommand（pnpm build:web）产出，随后编译 release 并打包 MSI + NSIS。
+      # tauri-action 执行 `tauri build`：frontendDist 由 tauri.conf.json 的
+      # beforeBuildCommand（pnpm build:web）产出，随后编译 release 并打包。
+      # - Windows: MSI + NSIS
+      # - Linux: deb + rpm + AppImage
+      # - macOS: universal（x64 + arm64）dmg/app
       - name: Build & publish Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -58,12 +89,13 @@ jobs:
 
             DeepSeek Harness 桌面版 —— 原生窗口 + 系统托盘（切换 Profile / 查看日志 / 设置页）。
 
-            ### 安装
-            - `dsh-desktop_0.1.0_x64-setup.exe`（NSIS 安装包，推荐）
-            - `dsh-desktop_0.1.0_x64_en-US.msi`（MSI 安装包）
+            ### 安装包（按平台选择，文件名中的 <版本> 为当前 tag）
+            - **Windows**：`dsh-desktop_<版本>_x64-setup.exe`（NSIS，推荐）/ `dsh-desktop_<版本>_x64_en-US.msi`
+            - **Linux**：`dsh-desktop_<版本>_amd64.deb`（Debian/Ubuntu）/ `*.rpm` / `*.AppImage`
+            - **macOS**：`dsh-desktop_<版本>_universal.dmg`（Intel + Apple Silicon）
 
             ### 环境要求
-            - Windows 10/11（自带 WebView2）
+            - Windows 10/11（自带 WebView2）；Linux 需 WebKitGTK；macOS 12+
             - `dsh` 命令在 PATH 中（DeepSeek Harness CLI）
             - Profile 位于 `$DSH_HOME/profiles`（默认 `~/.dsh/profiles`）
 
@@ -74,3 +106,4 @@ jobs:
             - 前端：React 19 + Vite + Tailwind CSS v4 + shadcn/ui
           releaseDraft: false
           prerelease: false
+          args: ${{ matrix.args }}
