@@ -52,6 +52,19 @@ pnpm build
 
 - Other scripts: `pnpm build:web` (frontend only), `pnpm typecheck` (tsc --noEmit), `pnpm preview`.
 
+## Release（GitHub Actions）
+
+打 tag 即自动构建并发布 Releases（Windows：exe / MSI / NSIS）：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+- 工作流：`.github/workflows/release.yml`（tag `v*` 触发，也可手动 `workflow_dispatch`）
+- 流程：pnpm 装依赖 → `tauri build`（release + MSI/NSIS）→ `tauri-action` 创建 GitHub Release 并上传安装包
+- 也可在 Actions 页手动运行工作流指定 tag，重新生成对应版本的 Release
+
 ## How it works
 
 - **Splash page**: React app in `src/` (built by Vite into `dist/`) — listens for `backend-log` / `backend-state` events via `@tauri-apps/api`, then invokes the `backend_start` command.
