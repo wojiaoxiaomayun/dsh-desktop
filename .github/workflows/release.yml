@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag name"
+        required: false
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # tauri-action 会执行 `tauri build`：frontendDist 由 tauri.conf.json 的
+      # beforeBuildCommand（pnpm build:web）产出，随后编译 release 并打包 MSI + NSIS。
+      - name: Build & publish Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "DSH Desktop ${{ inputs.tag || github.ref_name }}"
+          releaseBody: |
+            ## DSH Desktop ${{ inputs.tag || github.ref_name }}
+
+            DeepSeek Harness 桌面版 —— 原生窗口 + 系统托盘（切换 Profile / 查看日志 / 设置页）。
+
+            ### 安装
+            - `dsh-desktop_0.1.0_x64-setup.exe`（NSIS 安装包，推荐）
+            - `dsh-desktop_0.1.0_x64_en-US.msi`（MSI 安装包）
+
+            ### 环境要求
+            - Windows 10/11（自带 WebView2）
+            - `dsh` 命令在 PATH 中（DeepSeek Harness CLI）
+            - Profile 位于 `$DSH_HOME/profiles`（默认 `~/.dsh/profiles`）
+
+            ### 功能
+            - 启动页实时显示后端日志，就绪后自动打开主界面
+            - 系统托盘：显示窗口 / 重新加载 / 查看日志 / 返回主界面 / 设置 / 切换 Profile / 退出
+            - 设置页：新增 Profile 并立即加入托盘切换菜单，可一键启动
+            - 前端：React 19 + Vite + Tailwind CSS v4 + shadcn/ui
+          releaseDraft: false
+          prerelease: false
