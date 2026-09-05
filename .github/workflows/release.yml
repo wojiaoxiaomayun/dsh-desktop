@@ -40,7 +40,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y rpm
-          sudo snap install snapcraft --classic
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -59,7 +58,7 @@ jobs:
       # electron-builder 先执行 `electron-vite build`（含 typecheck），
       # 再按平台编译 release 并通过 GH_TOKEN 发布为 GitHub Release 附件。
       # - Windows: NSIS setup.exe
-      # - Linux: AppImage + snap + deb
+      # - Linux: AppImage + deb
       # - macOS: dmg
       - name: Build & publish Release
         run: pnpm run build && npx electron-builder ${{ matrix.target }} --publish always

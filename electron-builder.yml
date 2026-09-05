@@ -33,7 +33,6 @@ dmg:
 linux:
   target:
     - AppImage
-    - snap
     - deb
   maintainer: electronjs.org
   category: Utility
@@ -44,3 +43,4 @@ publish:
   provider: github
   owner: wojiaoxiaomayun
   repo: dsh-desktop
+  releaseType: release
