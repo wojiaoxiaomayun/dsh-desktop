@@ -1,6 +1,6 @@
 {
   "name": "dsh-desktop-electron",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "DSH Desktop - wraps the DeepSeek Harness web GUI",
   "main": "./out/main/index.js",
   "author": "dsh",
