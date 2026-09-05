@@ -38,37 +38,28 @@ function runDsh(args: string[]): ReturnType<typeof spawn> {
   return spawn('dsh', args, { stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
-/** `--no-open` 支持情况的缓存（不同 dsh 版本可能没有该参数）。 */
+/** `--no-open` 支持情况缓存（极旧版 dsh 可能没有该参数）。null 表示尚未验证。 */
 let noOpenSupported: boolean | null = null
 
-/** 探测当前 dsh 是否支持 `--no-open`（通过 `dsh --profile <name> --help` 的输出判断）。 */
-function detectNoOpenSupport(profile: string): Promise<boolean> {
-  if (noOpenSupported !== null) return Promise.resolve(noOpenSupported)
-  return new Promise((resolve) => {
-    const child = runDsh(['--profile', profile, '--help'])
-    let out = ''
-    let settled = false
-    let timer: NodeJS.Timeout
-    const finish = (v: boolean): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      noOpenSupported = v
-      resolve(v)
-    }
-    timer = setTimeout(() => {
-      child.kill()
-      finish(false)
-    }, 8000)
-    child.stdout?.on('data', (d) => {
-      out += d.toString()
-    })
-    child.stderr?.on('data', (d) => {
-      out += d.toString()
-    })
-    child.on('close', () => finish(out.includes('--no-open')))
-    child.on('error', () => finish(false))
-  })
+/** 组装 dsh 启动参数并拉起子进程，登记状态、持久化 profile、转发日志流。 */
+function spawnDsh(
+  profile: string,
+  port: number,
+  gen: number,
+  withNoOpen: boolean,
+): ReturnType<typeof spawn> {
+  const args = ['--profile', profile, '--host', BACKEND_HOST, '--port', String(port)]
+  if (withNoOpen) args.push('--no-open')
+  emitLog(`[启动] dsh ${args.join(' ')}`)
+  const child = runDsh(args)
+  state.pid = child.pid ?? 0
+  state.profile = profile
+  state.backendUrl = `http://${BACKEND_HOST}:${port}/`
+  state.token = null
+  saveProfile(profile)
+  streamLogs(child.stdout, gen)
+  streamLogs(child.stderr, gen)
+  return child
 }
 
 /** 退出时回收后端进程树。 */
@@ -93,7 +84,7 @@ function stopCurrent(): void {
 
 /** 从日志行中提取 token（新版 dsh 会打印形如 http://…/?token=… 的地址）。 */
 function extractToken(line: string): string | null {
-  const m = line.match(/[?&]token=([A-Za-z0-9_\-]+)/)
+  const m = line.match(/[?&]token=([A-Za-z0-9_-]+)/)
   return m ? m[1] : null
 }
 
@@ -150,22 +141,41 @@ async function launchBackend(profile: string): Promise<number> {
   const port = await pickFreePort()
   const targetUrl = `http://${BACKEND_HOST}:${port}/`
 
-  const args = ['--profile', profile, '--host', BACKEND_HOST, '--port', String(port)]
-  if (await detectNoOpenSupport(profile)) args.push('--no-open')
-  const child = runDsh(args)
-  const pid = child.pid ?? 0
-  state.pid = pid
-  state.profile = profile
-  state.backendUrl = targetUrl
-  state.token = null
-  saveProfile(profile)
-
-  streamLogs(child.stdout, gen)
-  streamLogs(child.stderr, gen)
+  // 默认始终带上 --no-open：桌面端用内嵌 webview 展示界面，不应再弹系统浏览器。
+  // 仅当 dsh 因不认识该参数在数秒内报错退出时，去掉参数重启一次并缓存该结果。
+  const withNoOpen = noOpenSupported !== false
+  let child = spawnDsh(profile, port, gen, withNoOpen)
+  const startedAt = Date.now()
+  let stderrTail = ''
+  child.stderr?.on('data', (d) => {
+    stderrTail = `${stderrTail}${d}`.slice(-4000)
+  })
 
   child.on('exit', () => {
-    if (state.pid === pid) state.pid = null
+    if (state.pid === child.pid) state.pid = null
   })
+
+  if (withNoOpen) {
+    child.on('exit', (code) => {
+      if (
+        noOpenSupported !== false &&
+        code !== null &&
+        code !== 0 &&
+        Date.now() - startedAt <= 8000 &&
+        /unknown option|unknown argument|未知/i.test(stderrTail)
+      ) {
+        noOpenSupported = false
+        emitLog('[警告] 当前 dsh 不支持 --no-open，已去掉该参数重新启动')
+        // 同代且当前没有别的后端在跑时，才自动重启（快速切换/新启动交给新流程处理）
+        if (state.generation === gen && state.pid === null) {
+          child = spawnDsh(profile, port, gen, false)
+          child.on('exit', () => {
+            if (state.pid === child.pid) state.pid = null
+          })
+        }
+      }
+    })
+  }
 
   // 就绪轮询（代数计数防止快速切换时的旧导航）
   const deadline = Date.now() + 60_000
@@ -190,7 +200,7 @@ async function launchBackend(profile: string): Promise<number> {
   }
   void poll()
 
-  return pid
+  return state.pid ?? 0
 }
 
 /** 启动默认 profile（若已在运行则跳过）。 */
@@ -221,6 +231,15 @@ export function navigateBackend(): void {
   const url = getBackendUrl()
   if (!url) throw new Error('后端尚未启动，暂无主界面可返回')
   navigateToUrl(url)
+}
+
+/** 刷新主窗口当前页面：直接 reload 当前 webview，不改变导航地址。 */
+export function reloadPage(): void {
+  const win = getMainWindow()
+  if (!win) throw new Error('主窗口尚未创建')
+  win.show()
+  win.focus()
+  win.webContents.reload()
 }
 
 /** 打开/关闭主窗口的 Web Inspector，返回切换后是否处于打开状态。 */

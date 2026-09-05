@@ -1,10 +1,10 @@
 import { app, Menu, nativeImage, Tray } from 'electron'
 import { emitLog, getCurrentProfile, getMainWindow, navigateRenderer } from './state'
 import {
-  navigateBackend,
   openDevtools,
   openInBrowser,
   reloadCurrent,
+  reloadPage,
   switchProfile,
 } from './backend'
 import { scanProfiles } from './profiles'
@@ -66,12 +66,12 @@ function buildMenu(): Menu {
       label: '窗口',
       submenu: [
         {
-          label: '返回主界面',
+          label: '刷新页面',
           click: () => {
             try {
-              navigateBackend()
+              reloadPage()
             } catch (e) {
-              emitLog(`[错误] 无法返回主界面：${String(e)}`)
+              emitLog(`[错误] 无法刷新页面：${String(e)}`)
             }
           },
         },
