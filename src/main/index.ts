@@ -1,6 +1,6 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, Menu, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer } from '@electron-toolkit/utils'
+import { electronApp, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import trayIcon from '../../resources/tray.png?asset'
 import {
@@ -104,8 +104,25 @@ function registerIpc(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.dsh.desktop')
 
+  // 放开默认拦截的快捷键（Ctrl+R 等）：Electron 默认菜单的 Reload/DevTools accelerator
+  // 和 @electron-toolkit/utils 的 watchWindowShortcuts 都会在浏览器层把 Ctrl+R
+  // 拦截掉，内嵌页面（webview）完全监听不到。这里去掉默认菜单（Windows/Linux），
+  // 也不再挂 before-input-event 拦截，把按键原样交给页面自己处理。
+  if (process.platform === 'darwin') {
+    // macOS 必须保留菜单（否则 Cmd+C/Cmd+V 失效）；App/Edit 菜单不含会吞按键的 accelerator。
+    Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]))
+  } else {
+    Menu.setApplicationMenu(null)
+  }
+
+  // 仅开发模式保留 F12 开关 DevTools；不拦截任何按键，页面照常收到事件。
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    if (!is.dev) return
+    window.webContents.on('before-input-event', (_event, input) => {
+      if (input.type === 'keyDown' && input.code === 'F12') {
+        window.webContents.toggleDevTools()
+      }
+    })
   })
 
   registerIpc()
