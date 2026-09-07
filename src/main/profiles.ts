@@ -7,6 +7,11 @@ export function dshHome(): string {
   return process.env.DSH_HOME || join(process.env.USERPROFILE || homedir(), '.dsh')
 }
 
+/** 指定 profile 的目录路径（$DSH_HOME/profiles/<name>）。 */
+export function profileDir(name: string): string {
+  return join(dshHome(), 'profiles', name)
+}
+
 /** 记录最近一次启动/切换 profile 的文件路径。 */
 function profileStatePath(): string {
   return join(dshHome(), 'dsh-desktop-profile')

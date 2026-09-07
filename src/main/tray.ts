@@ -1,4 +1,5 @@
-import { app, Menu, nativeImage, Tray } from 'electron'
+import { existsSync } from 'fs'
+import { app, Menu, nativeImage, shell, Tray } from 'electron'
 import { emitLog, getCurrentProfile, getMainWindow, navigateRenderer } from './state'
 import {
   openDevtools,
@@ -7,7 +8,7 @@ import {
   reloadPage,
   switchProfile,
 } from './backend'
-import { scanProfiles } from './profiles'
+import { profileDir, scanProfiles } from './profiles'
 
 let tray: Tray | null = null
 
@@ -116,6 +117,22 @@ function buildMenu(): Menu {
           },
         },
         { label: '切换 Profile', submenu: profileItems },
+        {
+          label: '打开 Profile 目录',
+          click: () => {
+            const dir = profileDir(current)
+            if (!existsSync(dir)) {
+              emitLog(`[错误] Profile 目录不存在：${dir}`)
+              return
+            }
+            shell
+              .openPath(dir)
+              .then((errMsg) => {
+                if (errMsg) emitLog(`[错误] 无法打开 Profile 目录：${errMsg}`)
+              })
+              .catch((e) => emitLog(`[错误] 无法打开 Profile 目录：${String(e)}`))
+          },
+        },
       ],
     },
     { type: 'separator' },
