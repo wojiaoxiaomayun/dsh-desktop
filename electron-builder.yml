@@ -20,6 +20,14 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  # 关闭一键安装，显示安装向导（含安装路径选择）
+  oneClick: false
+  # 按用户安装，安装到 %LOCALAPPDATA%\Programs，允许自定义目录
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # 需要时允许提权（例如创建开始菜单快捷方式）
+  allowElevation: true
+  deleteAppDataOnUninstall: false
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
