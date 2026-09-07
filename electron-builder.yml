@@ -29,6 +29,10 @@ nsis:
   allowElevation: true
   deleteAppDataOnUninstall: false
 mac:
+  # zip 供自动更新使用（electron-updater 在 macOS 上只认 zip）
+  target:
+    - dmg
+    - zip
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.

@@ -20,6 +20,7 @@ import {
 } from './backend'
 import { createProfile, scanProfiles, validateProfileName } from './profiles'
 import { createTray, refreshTrayMenu } from './tray'
+import { initUpdater, registerUpdateIpc } from './updater'
 
 let isQuitting = false
 
@@ -99,6 +100,7 @@ function registerIpc(): void {
     refreshTrayMenu()
   })
   ipcMain.handle('toggle-devtools', () => toggleDevtools())
+  registerUpdateIpc()
 }
 
 app.whenReady().then(() => {
@@ -128,6 +130,7 @@ app.whenReady().then(() => {
   registerIpc()
   createWindow()
   createTray(trayIcon)
+  initUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

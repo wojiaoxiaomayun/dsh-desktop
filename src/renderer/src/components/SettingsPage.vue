@@ -31,6 +31,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { errMessage } from '@/lib/splash'
+import UpdateSection from '@/components/UpdateSection.vue'
 
 const profiles = ref<string[]>([])
 const current = ref('')
@@ -133,6 +134,10 @@ function goBack(): void {
         <AlertTitle>{{ error ? '操作失败' : '成功' }}</AlertTitle>
         <AlertDescription>{{ error ?? info }}</AlertDescription>
       </Alert>
+
+      <UpdateSection />
+
+      <Separator />
 
       <FieldGroup>
         <Field :data-invalid="nameError ? true : undefined">

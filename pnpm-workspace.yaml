@@ -5,3 +5,6 @@ allowBuilds:
   vue-demi: true
 
 shamefullyHoist: true
+
+# 本机符号链接无法解析（pnpm 11 在 Windows 上默认用 symlink），改用平铺布局
+nodeLinker: hoisted
