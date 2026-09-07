@@ -1,6 +1,6 @@
 {
   "name": "dsh-desktop-electron",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "DSH Desktop - wraps the DeepSeek Harness web GUI",
   "main": "./out/main/index.js",
   "author": "dsh",
@@ -18,11 +18,15 @@
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
     "build:mac": "pnpm run build && electron-builder --mac",
-    "build:linux": "pnpm run build && electron-builder --linux"
+    "build:linux": "pnpm run build && electron-builder --linux",
+    "release:win": "pnpm run build && electron-builder --win --publish always",
+    "release:mac": "pnpm run build && electron-builder --mac --publish always",
+    "release:linux": "pnpm run build && electron-builder --linux --publish always"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
-    "@electron-toolkit/utils": "^4.0.0"
+    "@electron-toolkit/utils": "^4.0.0",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "3.0.0",
