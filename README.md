@@ -47,3 +47,11 @@ $ pnpm release:win              # macOS 用 release:mac，Linux 用 release:linu
 electron-builder 会自动创建 `v{version}` 的 Release 并上传安装包与 `latest.yml`（更新清单）。
 
 客户端行为：启动 8 秒后静默检查一次 → 发现新版本自动后台下载 → 下载完成后弹出系统通知，并在「设置 → 软件更新」提供「重启并安装」。开发模式（`pnpm dev`）不检查更新。
+
+### 检查 dsh 版本
+
+「设置 → dsh 版本」会显示本机 `dsh --version` 的版本号，并可一键通过 npm 查询最新版本：
+
+- 优先请求 npm registry（`https://registry.npmjs.org/-/package/@deepseek-ai/dsh/dist-tags` 的 `latest` 标签）；
+- registry 不可用时退回本机命令 `npm view @deepseek-ai/dsh@latest version`（兼容代理/镜像环境）；
+- 本机版本落后时展示升级命令 `npm i -g @deepseek-ai/dsh@latest`，升级后重启应用生效。

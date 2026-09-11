@@ -21,6 +21,20 @@ export interface UpdateState {
   error: string | null
 }
 
+/** dsh CLI 版本检查阶段（需与 src/main/dsh.ts 保持一致）。 */
+export type DshVersionStatus = 'unknown' | 'checking' | 'latest' | 'outdated' | 'ahead' | 'error'
+
+export interface DshVersionState {
+  /** 本机安装的 dsh 版本；未检测到为 null */
+  current: string | null
+  /** npm 上的最新版本；尚未检查为 null */
+  latest: string | null
+  status: DshVersionStatus
+  /** 最近一次检查的时间戳（ms） */
+  checkedAt: number | null
+  error: string | null
+}
+
 const api = {
   getLogs: (): Promise<string[]> => ipcRenderer.invoke('get-logs'),
   backendStart: (): Promise<void> => ipcRenderer.invoke('backend-start'),
@@ -34,6 +48,8 @@ const api = {
   getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke('update-get-state'),
   checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke('update-check'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update-install'),
+  getDshVersion: (): Promise<DshVersionState> => ipcRenderer.invoke('dsh-version'),
+  checkDshLatest: (): Promise<DshVersionState> => ipcRenderer.invoke('dsh-check-latest'),
   onLog: (cb: (text: string) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, text: string): void => cb(text)
     ipcRenderer.on('backend-log', listener)

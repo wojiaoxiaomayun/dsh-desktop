@@ -21,6 +21,7 @@ import {
 import { createProfile, scanProfiles, validateProfileName } from './profiles'
 import { createTray, refreshTrayMenu } from './tray'
 import { initUpdater, registerUpdateIpc } from './updater'
+import { registerDshVersionIpc } from './dsh'
 
 let isQuitting = false
 
@@ -101,6 +102,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('toggle-devtools', () => toggleDevtools())
   registerUpdateIpc()
+  registerDshVersionIpc()
 }
 
 app.whenReady().then(() => {

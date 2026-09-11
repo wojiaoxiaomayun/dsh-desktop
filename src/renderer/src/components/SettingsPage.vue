@@ -31,6 +31,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { errMessage } from '@/lib/splash'
+import DshVersionSection from '@/components/DshVersionSection.vue'
 import UpdateSection from '@/components/UpdateSection.vue'
 
 const profiles = ref<string[]>([])
@@ -134,6 +135,8 @@ function goBack(): void {
         <AlertTitle>{{ error ? '操作失败' : '成功' }}</AlertTitle>
         <AlertDescription>{{ error ?? info }}</AlertDescription>
       </Alert>
+
+      <DshVersionSection />
 
       <UpdateSection />
 
