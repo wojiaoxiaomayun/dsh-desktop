@@ -1,7 +1,7 @@
 import { spawn } from 'child_process'
 import { createInterface } from 'readline'
 import { createServer } from 'net'
-import { shell } from 'electron'
+import { session, shell } from 'electron'
 import {
   BACKEND_HOST,
   emitLog,
@@ -132,11 +132,46 @@ function streamLogs(stream: NodeJS.ReadableStream | null, gen: number): void {
   })
 }
 
+/**
+ * 清理默认 session 中 127.0.0.1 / localhost 的 Cookie（含每次启动产生的 auth token）。
+ * dsh 每次用随机端口重启，而 Cookie 不区分端口、只按域名累积，旧 token 一直保留，
+ * 累积到一定程度会让请求头超过后端默认上限，导致 /plugins/?? 组合资源被 431 拒绝。
+ * 只清本地后端域名的 cookie，不影响其他站点。
+ */
+async function clearLocalCookies(): Promise<void> {
+  try {
+    const ses = session.defaultSession
+    const targets = ['http://127.0.0.1', 'https://127.0.0.1', 'http://localhost', 'https://localhost']
+    let removed = 0
+    for (const url of targets) {
+      const list = await ses.cookies.get({ url })
+      for (const c of list) {
+        try {
+          await ses.cookies.remove(url, c.name)
+          removed += 1
+        } catch {
+          // 单个 cookie 删除失败不影响其他
+        }
+      }
+    }
+    if (removed > 0) {
+      emitLog(`[清理] 已清除 ${removed} 个本地后端残留 Cookie（端口切换后 token 不再累积）`)
+    }
+  } catch (err) {
+    emitLog(`[警告] 清理本地 Cookie 失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 /** 统一的后端启动/重启逻辑：停旧 → 随机端口 → 拉起 dsh → 转发日志 → 就绪后导航。 */
 async function launchBackend(profile: string): Promise<number> {
   stopCurrent()
   state.generation += 1
   const gen = state.generation
+
+  // 每次切换端口前清理旧的本地认证 Cookie：Cookie 按域名（127.0.0.1 / localhost）
+  // 存储、不区分端口，端口一换旧 token 不会自动失效，反复累积会撑爆请求头
+  // （/plugins/?? 组合资源因此被 431 Request Header Fields Too Large 拒绝）。
+  await clearLocalCookies()
 
   const port = await pickFreePort()
   const targetUrl = `http://${BACKEND_HOST}:${port}/`
