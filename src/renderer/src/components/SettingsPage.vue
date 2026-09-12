@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { errMessage } from '@/lib/splash'
 import DshVersionSection from '@/components/DshVersionSection.vue'
+import PluginSection from '@/components/PluginSection.vue'
 import UpdateSection from '@/components/UpdateSection.vue'
 
 const profiles = ref<string[]>([])
@@ -118,7 +119,7 @@ function goBack(): void {
         <div class="flex min-w-0 flex-1 flex-col gap-0.5">
           <CardTitle>设置</CardTitle>
           <CardDescription>
-            管理 Profile：新增后即可通过托盘“切换 Profile”或下方列表启动
+            管理 Profile、为当前 Profile 安装或移除插件
           </CardDescription>
         </div>
         <Button size="sm" variant="ghost" @click="goBack">
@@ -207,6 +208,10 @@ function goBack(): void {
           </div>
         </div>
       </div>
+
+      <Separator />
+
+      <PluginSection v-if="current" :profile="current" />
     </CardContent>
   </Card>
 </template>

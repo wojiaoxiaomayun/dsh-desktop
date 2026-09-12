@@ -15,10 +15,12 @@ import {
   backendStatus,
   killAll,
   navigateBackend,
+  reloadCurrent,
   switchProfile,
   toggleDevtools,
 } from './backend'
 import { createProfile, scanProfiles, validateProfileName } from './profiles'
+import { addPlugins, listPlugins, removePlugin } from './plugins'
 import { createTray, refreshTrayMenu } from './tray'
 import { initUpdater, registerUpdateIpc } from './updater'
 import { registerDshVersionIpc } from './dsh'
@@ -99,6 +101,26 @@ function registerIpc(): void {
   ipcMain.handle('switch-profile', async (_e, name: string) => {
     await switchProfile(String(name))
     refreshTrayMenu()
+  })
+  ipcMain.handle('reload-profile', async () => {
+    await reloadCurrent()
+    refreshTrayMenu()
+  })
+  ipcMain.handle('list-plugins', (_e, name: string) => listPlugins(String(name)))
+  ipcMain.handle('add-plugins', async (_e, name: string, specs: string[]) => {
+    const profile = String(name)
+    const clean = Array.isArray(specs)
+      ? specs.map((s) => String(s).trim()).filter((s) => s.length > 0)
+      : []
+    if (clean.length === 0) throw new Error('请至少输入一个插件包名')
+    const result = await addPlugins(profile, clean)
+    refreshTrayMenu()
+    return result
+  })
+  ipcMain.handle('remove-plugin', async (_e, name: string, pluginName: string) => {
+    const result = await removePlugin(String(name), String(pluginName))
+    refreshTrayMenu()
+    return result
   })
   ipcMain.handle('toggle-devtools', () => toggleDevtools())
   registerUpdateIpc()

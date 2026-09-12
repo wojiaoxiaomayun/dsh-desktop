@@ -26,6 +26,11 @@ export interface UpdateState {
   error: string | null
 }
 
+export interface PluginInfo {
+  name: string
+  version: string
+}
+
 /** dsh CLI 版本检查阶段（需与 src/main/dsh.ts 保持一致）。 */
 export type DshVersionStatus = 'unknown' | 'checking' | 'latest' | 'outdated' | 'ahead' | 'error'
 
@@ -51,6 +56,10 @@ export interface DshApi {
   currentProfile: () => Promise<string>
   createProfile: (name: string) => Promise<void>
   switchProfile: (name: string) => Promise<void>
+  reloadProfile: () => Promise<void>
+  listPlugins: (name: string) => Promise<PluginInfo[]>
+  addPlugins: (name: string, specs: string[]) => Promise<PluginInfo[]>
+  removePlugin: (name: string, pluginName: string) => Promise<PluginInfo[]>
   toggleDevtools: () => Promise<boolean>
   getUpdateState: () => Promise<UpdateState>
   checkForUpdates: () => Promise<UpdateState>

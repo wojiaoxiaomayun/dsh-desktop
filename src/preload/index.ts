@@ -21,6 +21,11 @@ export interface UpdateState {
   error: string | null
 }
 
+export interface PluginInfo {
+  name: string
+  version: string
+}
+
 /** dsh CLI 版本检查阶段（需与 src/main/dsh.ts 保持一致）。 */
 export type DshVersionStatus = 'unknown' | 'checking' | 'latest' | 'outdated' | 'ahead' | 'error'
 
@@ -44,6 +49,12 @@ const api = {
   currentProfile: (): Promise<string> => ipcRenderer.invoke('current-profile'),
   createProfile: (name: string): Promise<void> => ipcRenderer.invoke('create-profile', name),
   switchProfile: (name: string): Promise<void> => ipcRenderer.invoke('switch-profile', name),
+  reloadProfile: (): Promise<void> => ipcRenderer.invoke('reload-profile'),
+  listPlugins: (name: string): Promise<PluginInfo[]> => ipcRenderer.invoke('list-plugins', name),
+  addPlugins: (name: string, specs: string[]): Promise<PluginInfo[]> =>
+    ipcRenderer.invoke('add-plugins', name, specs),
+  removePlugin: (name: string, pluginName: string): Promise<PluginInfo[]> =>
+    ipcRenderer.invoke('remove-plugin', name, pluginName),
   toggleDevtools: (): Promise<boolean> => ipcRenderer.invoke('toggle-devtools'),
   getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke('update-get-state'),
   checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke('update-check'),
