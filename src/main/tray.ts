@@ -91,7 +91,7 @@ function buildMenu(): Menu {
           label: '查看日志',
           click: () => {
             showMain()
-            navigateRenderer()
+            navigateRenderer('/logs')
           },
         },
         {

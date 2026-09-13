@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import AppToolbar from '@/components/AppToolbar.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import SplashPage from '@/components/SplashPage.vue'
 import {
@@ -25,17 +26,35 @@ function now(): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-/** 基于 URL hash 的简单路由：#/settings → 设置页，其余 → 日志页。 */
-const route = ref<'logs' | 'settings'>(
-  window.location.hash.startsWith('#/settings') ? 'settings' : 'logs',
-)
+/**
+ * 基于 URL hash 的简单路由，所有页面都在整体框架（工具栏常驻）内切换：
+ * - #/app（默认）→ 后端 DSH 界面：内容区由主进程的 WebContentsView 覆盖
+ * - #/logs → 日志页（启动时默认显示）
+ * - #/settings → 设置页
+ */
+type Route = 'app' | 'logs' | 'settings'
+
+function hashToRoute(hash: string): Route {
+  if (hash.startsWith('#/app')) return 'app'
+  if (hash.startsWith('#/settings')) return 'settings'
+  return 'logs'
+}
+
+const route = ref<Route>(hashToRoute(window.location.hash))
+
+/** 同步主进程中的内嵌后端视图显隐：仅 app 模式显示。 */
+function syncViewMode(): void {
+  if (inElectron) window.api.setViewMode(route.value)
+}
 
 function onHash(): void {
-  route.value = window.location.hash.startsWith('#/settings') ? 'settings' : 'logs'
+  route.value = hashToRoute(window.location.hash)
+  syncViewMode()
 }
 
 const logs = ref<LogLine[]>([])
 const status = ref<BackendStatus>('starting')
+const maximized = ref(false)
 let idRef = 0
 
 function appendLog(text: string, level: LogLevel = 'info'): void {
@@ -45,6 +64,7 @@ function appendLog(text: string, level: LogLevel = 'info'): void {
 
 let unlistenLog: (() => void) | undefined
 let unlistenState: (() => void) | undefined
+let unlistenMax: (() => void) | undefined
 let cancelled = false
 
 async function boot(): Promise<void> {
@@ -106,7 +126,13 @@ async function boot(): Promise<void> {
 
 onMounted(() => {
   window.addEventListener('hashchange', onHash)
+  if (inElectron) {
+    unlistenMax = window.api.onMaximized((m) => {
+      maximized.value = m
+    })
+  }
   void boot()
+  syncViewMode()
 })
 
 onUnmounted(() => {
@@ -114,32 +140,82 @@ onUnmounted(() => {
   window.removeEventListener('hashchange', onHash)
   unlistenLog?.()
   unlistenState?.()
+  unlistenMax?.()
 })
 
-function handleReturn(): void {
-  window.api.navigateBackend().catch((err) => {
-    status.value = 'error'
-    appendLog(`[错误] 无法返回主界面：${errMessage(err)}`, 'error')
-  })
+function openApp(): void {
+  window.location.hash = '#/app'
 }
 
 function openSettings(): void {
   window.location.hash = '#/settings'
 }
+
+function openLogs(): void {
+  window.location.hash = '#/logs'
+}
+
+function reloadPage(): void {
+  if (!inElectron) {
+    window.location.reload()
+    return
+  }
+  window.api.reloadPage().catch((err) => {
+    status.value = 'error'
+    appendLog(`[错误] 无法刷新页面：${errMessage(err)}`, 'error')
+  })
+}
+
+function reloadBackend(): void {
+  if (!inElectron) return
+  // 重载会重启后端，切到日志页展示重启过程；就绪后自动回到聊天页。
+  window.location.hash = '#/logs'
+  appendLog('正在重新加载后端…', 'system')
+  window.api.reloadProfile().catch((err) => {
+    status.value = 'error'
+    appendLog(`[错误] 无法重新加载后端：${errMessage(err)}`, 'error')
+  })
+}
+
+function minimize(): void {
+  void window.api.windowMinimize()
+}
+
+function maximize(): void {
+  void window.api.windowMaximize()
+}
+
+function close(): void {
+  void window.api.windowClose()
+}
 </script>
 
 <template>
   <div
-    class="flex min-h-dvh items-center justify-center bg-gradient-to-b from-background to-muted/40 p-6"
+    class="flex h-dvh flex-col bg-gradient-to-b from-background to-muted/40"
+    :class="route === 'app' && 'overflow-hidden'"
   >
-    <SettingsPage v-if="route === 'settings'" />
-    <SplashPage
-      v-else
-      :logs="logs"
-      :status="status"
-      :in-electron="inElectron"
-      @return="handleReturn"
+    <!-- 常驻工具栏：充当无头窗口的自定义标题栏 -->
+    <AppToolbar
+      :route="route"
+      :maximized="maximized"
+      @open-app="openApp"
       @open-settings="openSettings"
+      @open-logs="openLogs"
+      @reload="reloadPage"
+      @reload-backend="reloadBackend"
+      @minimize="minimize"
+      @maximize="maximize"
+      @close="close"
     />
+    <main
+      v-if="route === 'logs' || route === 'settings'"
+      class="flex min-h-0 flex-1 justify-center overflow-y-auto p-6"
+    >
+      <SettingsPage v-if="route === 'settings'" />
+      <SplashPage v-else :logs="logs" :status="status" />
+    </main>
+    <!-- app 模式：内容区留空，由主进程的 WebContentsView 覆盖渲染后端界面 -->
+    <div v-else class="min-h-0 flex-1" />
   </div>
 </template>

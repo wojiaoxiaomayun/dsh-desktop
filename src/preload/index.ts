@@ -56,6 +56,18 @@ const api = {
   removePlugin: (name: string, pluginName: string): Promise<PluginInfo[]> =>
     ipcRenderer.invoke('remove-plugin', name, pluginName),
   toggleDevtools: (): Promise<boolean> => ipcRenderer.invoke('toggle-devtools'),
+  reloadPage: (): Promise<void> => ipcRenderer.invoke('reload-page'),
+  setViewMode: (mode: 'app' | 'logs' | 'settings'): void =>
+    ipcRenderer.send('set-view-mode', mode),
+  windowMinimize: (): Promise<void> => ipcRenderer.invoke('window-minimize'),
+  windowMaximize: (): Promise<void> => ipcRenderer.invoke('window-maximize'),
+  windowClose: (): Promise<void> => ipcRenderer.invoke('window-close'),
+  onMaximized: (cb: (maximized: boolean) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, maximized: boolean): void =>
+      cb(maximized)
+    ipcRenderer.on('window-maximized', listener)
+    return () => ipcRenderer.removeListener('window-maximized', listener)
+  },
   getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke('update-get-state'),
   checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke('update-check'),
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update-install'),

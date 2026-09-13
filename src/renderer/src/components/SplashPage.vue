@@ -1,20 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import {
-  ArrowLeftIcon,
-  SettingsIcon,
-  SquareTerminalIcon,
-  TerminalIcon,
-} from '@lucide/vue'
+import { TerminalIcon } from '@lucide/vue'
 
 import appIcon from '@/assets/app-icon.png'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
@@ -26,12 +19,6 @@ import { LEVEL_CLASS, STATUS_META, type BackendStatus, type LogLine } from '@/li
 const props = defineProps<{
   logs: LogLine[]
   status: BackendStatus
-  inElectron: boolean
-}>()
-
-const emit = defineEmits<{
-  (e: 'return'): void
-  (e: 'open-settings'): void
 }>()
 
 const bottomRef = ref<HTMLDivElement | null>(null)
@@ -46,14 +33,10 @@ watch(
 )
 
 const meta = computed(() => STATUS_META[props.status])
-
-function toggleDevtools(): void {
-  void window.api.toggleDevtools()
-}
 </script>
 
 <template>
-  <Card class="w-full max-w-2xl">
+  <Card class="flex h-full w-full max-w-3xl flex-col">
     <CardHeader>
       <div class="flex items-center gap-3">
         <img
@@ -68,7 +51,7 @@ function toggleDevtools(): void {
       </div>
     </CardHeader>
 
-    <CardContent class="flex flex-col gap-4">
+    <CardContent class="flex min-h-0 flex-1 flex-col gap-4">
       <div class="flex items-center gap-3">
         <Badge :variant="meta.variant">
           <component
@@ -90,7 +73,9 @@ function toggleDevtools(): void {
         启动日志
       </div>
 
-      <ScrollArea class="h-72 rounded-lg border border-border bg-muted/30 font-mono text-xs">
+      <ScrollArea
+        class="min-h-0 flex-1 rounded-lg border border-border bg-muted/30 font-mono text-xs"
+      >
         <div class="flex flex-col gap-1 p-3">
           <p v-if="logs.length === 0" class="italic text-muted-foreground">等待日志输出…</p>
           <template v-else>
@@ -105,29 +90,5 @@ function toggleDevtools(): void {
         </div>
       </ScrollArea>
     </CardContent>
-
-    <CardFooter class="justify-center gap-3">
-      <Button
-        v-if="inElectron"
-        size="sm"
-        variant="outline"
-        :disabled="status !== 'ready'"
-        @click="emit('return')"
-      >
-        <ArrowLeftIcon data-icon="inline-start" />
-        返回 DSH 界面
-      </Button>
-      <Button size="sm" variant="ghost" @click="emit('open-settings')">
-        <SettingsIcon data-icon="inline-start" />
-        设置
-      </Button>
-      <Button v-if="inElectron" size="sm" variant="ghost" @click="toggleDevtools">
-        <SquareTerminalIcon data-icon="inline-start" />
-        打开控制台
-      </Button>
-      <span class="text-xs text-muted-foreground">
-        可通过系统托盘切换 Profile、查看日志或退出
-      </span>
-    </CardFooter>
   </Card>
 </template>

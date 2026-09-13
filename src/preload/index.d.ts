@@ -61,6 +61,12 @@ export interface DshApi {
   addPlugins: (name: string, specs: string[]) => Promise<PluginInfo[]>
   removePlugin: (name: string, pluginName: string) => Promise<PluginInfo[]>
   toggleDevtools: () => Promise<boolean>
+  reloadPage: () => Promise<void>
+  setViewMode: (mode: 'app' | 'logs' | 'settings') => void
+  windowMinimize: () => Promise<void>
+  windowMaximize: () => Promise<void>
+  windowClose: () => Promise<void>
+  onMaximized: (cb: (maximized: boolean) => void) => () => void
   getUpdateState: () => Promise<UpdateState>
   checkForUpdates: () => Promise<UpdateState>
   installUpdate: () => Promise<void>

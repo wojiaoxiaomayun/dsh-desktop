@@ -6,9 +6,14 @@ import trayIcon from '../../resources/tray.png?asset'
 import {
   emitLog,
   getCurrentProfile,
+  getMainWindow,
+  hideBackendView,
+  layoutBackendView,
   rendererUrl,
   setMainWindow,
+  showBackendView,
   state,
+  unmountBackendView,
 } from './state'
 import {
   backendStart,
@@ -16,6 +21,7 @@ import {
   killAll,
   navigateBackend,
   reloadCurrent,
+  reloadPage,
   switchProfile,
   toggleDevtools,
 } from './backend'
@@ -49,6 +55,8 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
+    // 无头窗口：隐藏系统标题栏/边框，由渲染层工具栏充当自定义标题栏。
+    frame: false,
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -58,6 +66,17 @@ function createWindow(): void {
   setMainWindow(mainWindow)
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
+
+  // 窗口尺寸变化时同步内嵌后端视图的 bounds，使其始终贴合工具栏下方。
+  mainWindow.on('resize', () => layoutBackendView())
+  mainWindow.on('maximize', () => {
+    layoutBackendView()
+    mainWindow.webContents.send('window-maximized', true)
+  })
+  mainWindow.on('unmaximize', () => {
+    layoutBackendView()
+    mainWindow.webContents.send('window-maximized', false)
+  })
 
   // 关闭主窗口仅隐藏到托盘，不退出进程；退出由托盘菜单“退出”完成。
   mainWindow.on('close', (e) => {
@@ -73,14 +92,19 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // 页面导航：允许启动页与本地后端；其余交给默认浏览器并取消导航。
+  // 外壳渲染层导航：始终停留在本地渲染层；其余交给默认浏览器并取消导航。
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (isInternalUrl(url)) return
     event.preventDefault()
     if (/^https?:/i.test(url)) shell.openExternal(url)
   })
 
+  // 始终加载渲染层外壳（工具栏常驻），后端界面由内嵌 WebContentsView 承载。
   mainWindow.loadURL(rendererUrl())
+
+  mainWindow.on('closed', () => {
+    unmountBackendView()
+  })
 }
 
 function registerIpc(): void {
@@ -123,6 +147,21 @@ function registerIpc(): void {
     return result
   })
   ipcMain.handle('toggle-devtools', () => toggleDevtools())
+  ipcMain.handle('reload-page', () => reloadPage())
+  // 渲染层切换视图模式：'app' → 显示内嵌后端视图，其余 → 隐藏。
+  ipcMain.on('set-view-mode', (_e, mode: string) => {
+    if (mode === 'app') showBackendView()
+    else hideBackendView()
+  })
+  // 无头窗口的自定义标题栏控制。
+  ipcMain.handle('window-minimize', () => getMainWindow()?.minimize())
+  ipcMain.handle('window-maximize', () => {
+    const win = getMainWindow()
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.handle('window-close', () => getMainWindow()?.close())
   registerUpdateIpc()
   registerDshVersionIpc()
 }

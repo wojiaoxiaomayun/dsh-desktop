@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import {
-  ArrowLeftIcon,
   CircleCheckIcon,
   CircleXIcon,
   FolderPlusIcon,
@@ -101,14 +100,10 @@ async function handleSwitch(name: string): Promise<void> {
     switching.value = null
   }
 }
-
-function goBack(): void {
-  window.location.hash = ''
-}
 </script>
 
 <template>
-  <Card class="w-full max-w-2xl">
+  <Card class="w-full max-w-2xl self-start">
     <CardHeader>
       <div class="flex items-center gap-3">
         <img
@@ -122,10 +117,6 @@ function goBack(): void {
             管理 Profile、为当前 Profile 安装或移除插件
           </CardDescription>
         </div>
-        <Button size="sm" variant="ghost" @click="goBack">
-          <ArrowLeftIcon data-icon="inline-start" />
-          返回日志页
-        </Button>
       </div>
     </CardHeader>
 

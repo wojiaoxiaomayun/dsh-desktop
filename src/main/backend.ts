@@ -7,9 +7,12 @@ import {
   emitLog,
   emitState,
   getBackendUrl,
+  getBackendView,
   getCurrentProfile,
   getMainWindow,
-  navigateToUrl,
+  mountBackendView,
+  navigateRenderer,
+  showBackendView,
   state,
 } from './state'
 import { defaultProfile, saveProfile, scanProfiles } from './profiles'
@@ -222,7 +225,10 @@ async function launchBackend(profile: string): Promise<number> {
         const url = token ? `${targetUrl}?token=${token}` : targetUrl
         emitLog(`[就绪] 后端已启动：${url}`)
         emitState('ready')
-        navigateToUrl(url)
+        // 后端就绪后自动进入聊天页：切到 app 模式并挂载显示后端视图。
+        navigateRenderer('/app')
+        mountBackendView(url)
+        showBackendView()
       }
       return
     }
@@ -261,47 +267,48 @@ export function backendStatus(): boolean {
   return state.pid !== null
 }
 
-/** 导航主窗口回当前后端界面。 */
+/** 导航回后端界面：显示主窗口外壳，并把当前后端 URL 加载进内嵌视图。 */
 export function navigateBackend(): void {
   const url = getBackendUrl()
   if (!url) throw new Error('后端尚未启动，暂无主界面可返回')
-  navigateToUrl(url)
+  const win = getMainWindow()
+  if (!win) throw new Error('主窗口尚未创建')
+  win.show()
+  win.focus()
+  navigateRenderer('/app')
+  mountBackendView(url)
+  showBackendView()
 }
 
-/** 刷新主窗口当前页面：直接 reload 当前 webview，不改变导航地址。 */
+/** 刷新内嵌后端视图：重新加载其当前页面，不改变导航地址。 */
 export function reloadPage(): void {
-  const win = getMainWindow()
-  if (!win) throw new Error('主窗口尚未创建')
-  win.show()
-  win.focus()
-  win.webContents.reload()
+  const view = getBackendView()
+  if (!view) throw new Error('后端视图尚未创建')
+  view.webContents.reload()
 }
 
-/** 打开/关闭主窗口的 Web Inspector，返回切换后是否处于打开状态。 */
+/** 打开/关闭后端视图的 Web Inspector，返回切换后是否处于打开状态。 */
 export function toggleDevtools(): boolean {
-  const win = getMainWindow()
-  if (!win) throw new Error('主窗口尚未创建')
-  win.show()
-  win.focus()
-  const open = win.webContents.isDevToolsOpened()
-  if (open) win.webContents.closeDevTools()
-  else win.webContents.openDevTools()
+  const view = getBackendView()
+  if (!view) throw new Error('后端视图尚未创建')
+  const wc = view.webContents
+  const open = wc.isDevToolsOpened()
+  if (open) wc.closeDevTools()
+  else wc.openDevTools()
   return !open
 }
 
-/** 打开主窗口的 Web Inspector（托盘“打开控制台”）。 */
+/** 打开后端视图的 Web Inspector（托盘“打开控制台”）。 */
 export function openDevtools(): void {
-  const win = getMainWindow()
-  if (!win) throw new Error('主窗口尚未创建')
-  win.show()
-  win.focus()
-  win.webContents.openDevTools()
+  const view = getBackendView()
+  if (!view) throw new Error('后端视图尚未创建')
+  view.webContents.openDevTools()
 }
 
-/** 用系统默认浏览器打开主窗口当前页面（仅内部 http）；否则打开后端主界面地址。 */
+/** 用系统默认浏览器打开后端视图当前页面（仅内部 http）；否则打开后端主界面地址。 */
 export function openInBrowser(): void {
-  const win = getMainWindow()
-  const current = win?.webContents.getURL()
+  const view = getBackendView()
+  const current = view?.webContents.getURL()
   let target: string | null = null
   if (current) {
     try {
