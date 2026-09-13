@@ -99,7 +99,13 @@ export function mountBackendView(url: string): WebContentsView {
         sandbox: false,
       },
     })
+    // 顶层导航：外部地址交给系统浏览器。
     backendView.webContents.on('will-navigate', onViewNavigate)
+    // window.open / target="_blank"：一律外部浏览器打开，不在应用内新开窗口。
+    backendView.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url)) shell.openExternal(url)
+      return { action: 'deny' }
+    })
   }
   // 若已在主窗口中，先移除以保持“隐藏”状态，避免就绪时遮挡日志页。
   if (isChildOf(mainWindow, backendView)) mainWindow.contentView.removeChildView(backendView)
