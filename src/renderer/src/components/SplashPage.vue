@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { TerminalIcon } from '@lucide/vue'
+import { LoaderCircleIcon, RotateCcwIcon, TerminalIcon } from '@lucide/vue'
 
 import appIcon from '@/assets/app-icon.png'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -21,6 +23,10 @@ const props = defineProps<{
   status: BackendStatus
 }>()
 
+const emit = defineEmits<{
+  (e: 'reload-backend'): void
+}>()
+
 const bottomRef = ref<HTMLDivElement | null>(null)
 
 // 新日志到达时自动滚动到底部
@@ -33,6 +39,9 @@ watch(
 )
 
 const meta = computed(() => STATUS_META[props.status])
+
+/** 后端正在启动时不允许再次重载，避免并发拉起多个 dsh 进程。 */
+const reloading = computed(() => props.status === 'starting')
 </script>
 
 <template>
@@ -49,6 +58,20 @@ const meta = computed(() => STATUS_META[props.status])
           <CardDescription>DeepSeek Harness 桌面版</CardDescription>
         </div>
       </div>
+      <!-- 右上角：重载后端（重启当前 profile），便于边看日志边重启 -->
+      <CardAction class="self-center">
+        <Button
+          size="sm"
+          variant="outline"
+          title="重载后端"
+          :disabled="reloading"
+          @click="emit('reload-backend')"
+        >
+          <LoaderCircleIcon v-if="reloading" data-icon="inline-start" class="animate-spin" />
+          <RotateCcwIcon v-else data-icon="inline-start" />
+          重载
+        </Button>
+      </CardAction>
     </CardHeader>
 
     <CardContent class="flex min-h-0 flex-1 flex-col gap-4">

@@ -69,11 +69,7 @@ function buildMenu(): Menu {
         {
           label: '刷新页面',
           click: () => {
-            try {
-              reloadPage()
-            } catch (e) {
-              emitLog(`[错误] 无法刷新页面：${String(e)}`)
-            }
+            void reloadPage().catch((e) => emitLog(`[错误] 无法刷新页面：${String(e)}`))
           },
         },
         {

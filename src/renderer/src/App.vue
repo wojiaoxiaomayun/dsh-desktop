@@ -203,7 +203,6 @@ function close(): void {
       @open-settings="openSettings"
       @open-logs="openLogs"
       @reload="reloadPage"
-      @reload-backend="reloadBackend"
       @minimize="minimize"
       @maximize="maximize"
       @close="close"
@@ -213,7 +212,7 @@ function close(): void {
       class="flex min-h-0 flex-1 justify-center overflow-y-auto p-6"
     >
       <SettingsPage v-if="route === 'settings'" />
-      <SplashPage v-else :logs="logs" :status="status" />
+      <SplashPage v-else :logs="logs" :status="status" @reload-backend="reloadBackend" />
     </main>
     <!-- app 模式：内容区留空，由主进程的 WebContentsView 覆盖渲染后端界面 -->
     <div v-else class="min-h-0 flex-1" />

@@ -6,12 +6,14 @@ import {
   BACKEND_HOST,
   emitLog,
   emitState,
+  flushBackendAuth,
   getBackendUrl,
   getBackendView,
   getCurrentProfile,
   getMainWindow,
   mountBackendView,
   navigateRenderer,
+  reloadBackendView,
   showBackendView,
   state,
 } from './state'
@@ -111,16 +113,34 @@ function waitForToken(timeoutMs: number): Promise<string | null> {
   })
 }
 
-/** 后端是否就绪：向 / 发一个 GET，能收到 HTTP 响应即视为就绪。 */
-async function backendReady(port: number): Promise<boolean> {
-  const url = state.token
-    ? `http://${BACKEND_HOST}:${port}/?token=${state.token}`
-    : `http://${BACKEND_HOST}:${port}/`
+/** 后端根路径的探测结果。 */
+type BackendProbe = 'down' | 'starting' | 'auth-required' | 'up'
+
+/**
+ * 等待启动日志打印访问 token 的上限。
+ * token 行出现在整棵插件树就绪之后，profile 装的插件越多越晚；
+ * 实测重 profile 的等待明显超过 1 秒的量级，这里给足余量。
+ */
+const TOKEN_WAIT_TIMEOUT_MS = 20_000
+
+/**
+ * 探测后端根路径的启动与鉴权状态。
+ * `dsh web` 的 webserver 先绑定端口、web-runtime 稍后才挂上前端静态资源，
+ * 这中间 `/` 返回 404 —— 不能当成“就绪”。真正可用的标志只有两种：
+ * 401（需要 token，必须从启动日志里取）和 2xx（无需 token，可直接打开）。
+ * @returns 'down' 端口未监听 / 'starting' 监听但前端未挂载 / 'auth-required' 需要 token / 'up' 可直接访问。
+ */
+async function probeBackend(port: number): Promise<BackendProbe> {
   try {
-    await fetch(url, { signal: AbortSignal.timeout(2000) })
-    return true
+    const res = await fetch(`http://${BACKEND_HOST}:${port}/`, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(2000),
+    })
+    if (res.status === 401) return 'auth-required'
+    if (res.status === 404 || res.status >= 500) return 'starting'
+    return 'up'
   } catch {
-    return false
+    return 'down'
   }
 }
 
@@ -131,7 +151,12 @@ function streamLogs(stream: NodeJS.ReadableStream | null, gen: number): void {
   rl.on('line', (line) => {
     emitLog(line)
     const token = extractToken(line)
-    if (token && state.generation === gen) state.token = token
+    if (token && state.generation === gen) {
+      state.token = token
+      // token 是插件树全部就绪后才打印的；若视图已经因为缺 token 落到 401 页，
+      // 这里立刻带 token 重载，把空白页救回来。
+      flushBackendAuth()
+    }
   })
 }
 
@@ -185,12 +210,15 @@ async function launchBackend(profile: string): Promise<number> {
   let child = spawnDsh(profile, port, gen, withNoOpen)
   const startedAt = Date.now()
   let stderrTail = ''
+  // 子进程是否已退出：退出后端口不会被监听，无需再等到 60 秒超时。
+  let childExited = false
   child.stderr?.on('data', (d) => {
     stderrTail = `${stderrTail}${d}`.slice(-4000)
   })
 
   child.on('exit', () => {
     if (state.pid === child.pid) state.pid = null
+    childExited = true
   })
 
   if (withNoOpen) {
@@ -207,8 +235,13 @@ async function launchBackend(profile: string): Promise<number> {
         // 同代且当前没有别的后端在跑时，才自动重启（快速切换/新启动交给新流程处理）
         if (state.generation === gen && state.pid === null) {
           child = spawnDsh(profile, port, gen, false)
+          childExited = false
+          child.stderr?.on('data', (d) => {
+            stderrTail = `${stderrTail}${d}`.slice(-4000)
+          })
           child.on('exit', () => {
             if (state.pid === child.pid) state.pid = null
+            childExited = true
           })
         }
       }
@@ -218,10 +251,32 @@ async function launchBackend(profile: string): Promise<number> {
   // 就绪轮询（代数计数防止快速切换时的旧导航）
   const deadline = Date.now() + 60_000
   const poll = async (): Promise<void> => {
-    if (await backendReady(port)) {
+    if (state.generation !== gen) return
+    if (childExited) {
+      // --no-open 兼容性重启可能正在路上，短暂让行后再判定
+      await new Promise((r) => setTimeout(r, 500))
+      if (state.generation !== gen) return
+      if (childExited) {
+        const detail = stderrTail.trim().split(/\r?\n/).slice(-3).join(' | ')
+        emitLog(`[错误] dsh 进程已退出，后端未能启动${detail ? `：${detail}` : ''}`)
+        emitState('error')
+        return
+      }
+    }
+    const probe = await probeBackend(port)
+    if (probe === 'auth-required' || probe === 'up') {
       if (state.generation === gen) {
-        // 就绪后给一点时间等待 token 行被捕获（新版 dsh 需要 token 才能打开页面）
-        const token = await waitForToken(1000)
+        // 需要 token 时一直等到启动日志打印出带 token 的地址为止：
+        // 插件树越重、打印越晚，1 秒的固定等待会让视图以 401 空白页收场。
+        const token =
+          probe === 'auth-required' ? await waitForToken(TOKEN_WAIT_TIMEOUT_MS) : state.token
+        if (state.generation !== gen) return
+        if (probe === 'auth-required' && !token) {
+          emitLog(
+            `[警告] 等待 ${TOKEN_WAIT_TIMEOUT_MS / 1000} 秒仍未从启动日志中获取访问 token，` +
+              '先以无 token 地址打开（视图若被拒会自动重试）',
+          )
+        }
         const url = token ? `${targetUrl}?token=${token}` : targetUrl
         emitLog(`[就绪] 后端已启动：${url}`)
         emitState('ready')
@@ -280,11 +335,9 @@ export function navigateBackend(): void {
   showBackendView()
 }
 
-/** 刷新内嵌后端视图：重新加载其当前页面，不改变导航地址。 */
-export function reloadPage(): void {
-  const view = getBackendView()
-  if (!view) throw new Error('后端视图尚未创建')
-  view.webContents.reload()
+/** 刷新内嵌后端视图：客户端路由不变；认证 Cookie 失效时自动带 token 重新加载。 */
+export async function reloadPage(): Promise<void> {
+  await reloadBackendView()
 }
 
 /** 打开/关闭后端视图的 Web Inspector，返回切换后是否处于打开状态。 */

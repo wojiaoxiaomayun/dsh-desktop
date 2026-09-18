@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { BrowserWindow, shell, WebContentsView } from 'electron'
+import { BrowserWindow, session, shell, WebContentsView } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { defaultProfile, scanProfiles } from './profiles'
 
@@ -101,6 +101,10 @@ export function mountBackendView(url: string): WebContentsView {
     })
     // 顶层导航：外部地址交给系统浏览器。
     backendView.webContents.on('will-navigate', onViewNavigate)
+    // 落在 401 页面上说明这次导航没带上（或带错了）访问 token，就地自愈重载。
+    backendView.webContents.on('did-navigate', (_event, _url, httpResponseCode) => {
+      if (httpResponseCode === 401) recoverBackendAuth()
+    })
     // window.open / target="_blank"：一律外部浏览器打开，不在应用内新开窗口。
     backendView.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:/i.test(url)) shell.openExternal(url)
@@ -109,9 +113,88 @@ export function mountBackendView(url: string): WebContentsView {
   }
   // 若已在主窗口中，先移除以保持“隐藏”状态，避免就绪时遮挡日志页。
   if (isChildOf(mainWindow, backendView)) mainWindow.contentView.removeChildView(backendView)
+  resetBackendAuth()
   layoutBackendView()
-  backendView.webContents.loadURL(url)
+  backendView.webContents.loadURL(url).catch((err) => {
+    emitLog(`[警告] 后端视图加载被中断：${err instanceof Error ? err.message : String(err)}`)
+  })
   return backendView
+}
+
+/** 401 自愈：同一轮启动最多重载的次数，避免 token 失效时反复刷新。 */
+const AUTH_RECOVERY_LIMIT = 2
+
+let authRecoveryCount = 0
+let authRecoveryPending = false
+
+/**
+ * 后端视图被 401 拒绝时的自愈：带着当前 token 重新加载。
+ * token 尚未从日志中解析出来时先记为待处理，等 token 到手后再补一次重载，
+ * 否则视图会一直停在 “authentication required” 的空白页上。
+ */
+export function recoverBackendAuth(): void {
+  if (!backendView) return
+  if (!state.token || !state.backendUrl) {
+    authRecoveryPending = true
+    return
+  }
+  if (authRecoveryCount >= AUTH_RECOVERY_LIMIT) {
+    emitLog('[错误] 后端视图多次因缺少有效 token 被拒绝，请重新加载后端')
+    return
+  }
+  authRecoveryCount += 1
+  authRecoveryPending = false
+  emitLog(`[鉴权] 视图缺少访问 token，正在带 token 重新加载：${state.backendUrl}`)
+  backendView.webContents.loadURL(`${state.backendUrl}?token=${state.token}`).catch(() => {
+    // 重载被后续导航取代属正常情况
+  })
+}
+
+/** 新解析出 token 后补做一次待处理的自愈重载。 */
+export function flushBackendAuth(): void {
+  if (authRecoveryPending) recoverBackendAuth()
+}
+
+/** 每轮新的后端导航重新开始计次，避免上一轮的失败次数影响本轮。 */
+export function resetBackendAuth(): void {
+  authRecoveryCount = 0
+  authRecoveryPending = false
+}
+
+/** 当前页面是否还持有 dsh 的认证 Cookie（名字由 dsh 按 authority 哈希生成，故只认前缀）。 */
+async function hasBackendAuthCookie(url: string): Promise<boolean> {
+  try {
+    const list = await session.defaultSession.cookies.get({ url })
+    return list.some((c) => c.name.startsWith('dsh-auth-'))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 刷新后端视图当前页面。
+ * 认证 Cookie 仍在时就地 reload，保留单页应用内部的当前路由；
+ * Cookie 已丢失（例如被清理过）时 reload 只会再拿回一个 401 空白页，
+ * 因此改为带 token 重新加载一次，让后端重新种下 Cookie。
+ */
+export async function reloadBackendView(): Promise<void> {
+  if (!backendView) throw new Error('后端视图尚未创建')
+  const wc = backendView.webContents
+  // 后端不要求 token（旧版 dsh）时没有 Cookie 可言，就地刷新即可。
+  if (!state.token) {
+    wc.reload()
+    return
+  }
+  const current = wc.getURL()
+  if (current && !current.startsWith('about:') && (await hasBackendAuthCookie(current))) {
+    wc.reload()
+    return
+  }
+  const url = getBackendUrl()
+  if (!url) throw new Error('后端尚未启动，暂无可刷新的页面')
+  emitLog('[鉴权] 认证 Cookie 已失效，正在带 token 重新加载页面')
+  resetBackendAuth()
+  await wc.loadURL(url)
 }
 
 /** 后端视图是否为当前主窗口的子视图。 */
@@ -126,7 +209,12 @@ export function showBackendView(): void {
   const url = backendView.webContents.getURL()
   if (!url || url === 'about:blank') {
     const backendUrl = getBackendUrl()
-    if (backendUrl) backendView.webContents.loadURL(backendUrl)
+    if (backendUrl) {
+      resetBackendAuth()
+      backendView.webContents.loadURL(backendUrl).catch(() => {
+        // 由 did-navigate 的 401 自愈兜底
+      })
+    }
   }
   layoutBackendView()
 }

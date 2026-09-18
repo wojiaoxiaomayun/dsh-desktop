@@ -4,7 +4,6 @@ import {
   MessageSquareIcon,
   MinusIcon,
   RefreshCwIcon,
-  RotateCcwIcon,
   ScrollTextIcon,
   SettingsIcon,
   SquareIcon,
@@ -25,7 +24,6 @@ const emit = defineEmits<{
   (e: 'open-settings'): void
   (e: 'open-logs'): void
   (e: 'reload'): void
-  (e: 'reload-backend'): void
   (e: 'minimize'): void
   (e: 'maximize'): void
   (e: 'close'): void
@@ -56,14 +54,6 @@ const emit = defineEmits<{
       <template v-if="route === 'app'">
         <Button size="icon-sm" variant="ghost" title="刷新" @click="emit('reload')">
           <RefreshCwIcon />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          title="重载"
-          @click="emit('reload-backend')"
-        >
-          <RotateCcwIcon />
         </Button>
         <Separator
           orientation="vertical"
