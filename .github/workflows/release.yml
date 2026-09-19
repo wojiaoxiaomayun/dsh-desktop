@@ -7,15 +7,58 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name"
+        description: "要发布的 tag（需已存在，例如 v0.0.12；留空则用当前 ref 的 package.json version）"
         required: false
-        default: "v0.1.0"
+        default: ""
 
 permissions:
   contents: write
 
 jobs:
+  # 必须先把 Release 建好：3 个平台会并行执行 electron-builder --publish always，
+  # 每个进程都会各自调用 getOrCreateRelease()，找不到本 tag 的 Release 就自己新建一个，
+  # 于是同一个 tag 会冒出多个 Release，安装包/更新清单还被拆散到不同 Release 里。
+  # 这里提前创建（或复用）唯一 Release，后续所有 publisher 只会往它上面传附件。
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      # tag 唯一来源是 package.json 的 version（electron-builder 也用它拼 v{version}）
+      - name: Resolve release tag
+        id: resolve
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.resolve.outputs.tag }}"
+          # tag 推送触发时，推送的 tag 必须与 package.json 的 version 一致，否则会发到错误的 Release
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error::推送的 tag $GITHUB_REF_NAME 与 package.json 的 version（$TAG）不一致，请先同步版本号"
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，跳过创建"
+          elif gh release create "$TAG" --verify-tag --title "${TAG#v}" --notes ""; then
+            echo "已创建 Release $TAG"
+          elif gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已由并发运行创建"
+          else
+            echo "::error::无法创建 Release $TAG，请确认 tag 已推送（tag 由 package.json 的 version 决定）"
+            exit 1
+          fi
+
   build-release:
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +77,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
 
       - name: Install Linux system dependencies
         if: matrix.platform == 'linux'
@@ -56,12 +101,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # electron-builder 先执行 `electron-vite build`（含 typecheck），
-      # 再按平台编译 release 并通过 GH_TOKEN 发布为 GitHub Release 附件。
+      # 再按平台编译 release 并把产物上传到 prepare-release 建好的那个 Release：
       # - Windows: NSIS setup.exe
       # - Linux: AppImage + deb
-      # - macOS: dmg
+      # - macOS: dmg + zip
+      # EP_GH_IGNORE_TIME=true：重跑工作流时仍然上传（默认对发布超过 2 小时的 Release 会直接跳过）
       - name: Build & publish Release
         run: pnpm run build && npx electron-builder ${{ matrix.target }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EP_GH_IGNORE_TIME: "true"
